@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Science Carnival Evaluation System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <img id="appLogo" src="https://dummyimage.com/128x128/1f2a52/ffffff&text=SE" alt="Logo" class="header-logo">
+            <div class="header-title">
+                <h1 id="appTitle">Science Carnival 2025</h1>
+                <div class="subtitle" id="appSubtitle">Project Evaluation System</div>
+            </div>
+        </div>
+        <div id="userControls"></div>
+    </div>
+
+    <div class="container">
+        <!-- Role Gate -->
+        <div id="roleGate" class="card">
+            <h2 id="welcomeTitle">Welcome to Science Carnival 2025</h2>
+            <p id="welcomeBody" class="hint">Please select your role to continue.</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px;">
+                <div id="adminRoleCard"
+                    style="cursor: pointer; text-align: center; background: var(--border); border: 1px solid var(--border); border-radius: 12px; padding: 20px;"
+                    onclick="document.getElementById('adminLoginCard').classList.remove('hidden'); document.getElementById('roleGate').classList.add('hidden');">
+                    <h3 style="margin-bottom: 8px;">Admin</h3>
+                    <p class="hint">Manage system</p>
+                </div>
+                <div id="evalRoleCard"
+                    style="cursor: pointer; text-align: center; background: var(--border); border: 1px solid var(--border); border-radius: 12px; padding: 20px;"
+                    onclick="document.getElementById('evalLoginCard').classList.remove('hidden'); document.getElementById('roleGate').classList.add('hidden');">
+                    <h3 style="margin-bottom: 8px;">Evaluator</h3>
+                    <p class="hint">Evaluate projects</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Login -->
+        <div id="adminLoginCard" class="card hidden">
+            <h2>Admin Login</h2>
+            <label>Email</label>
+            <input type="email" id="adminEmail" placeholder="admin@example.com">
+            <label>Password</label>
+            <input type="password" id="adminPass" placeholder="Enter password">
+            <div id="adminLoginMsg" class="error hidden"></div>
+            <div class="toolbar" style="margin-top: 16px;">
+                <button class="btn" onclick="Auth.adminLogin()">Login</button>
+                <button class="btn secondary" onclick="UI.backToGate()">Back</button>
+            </div>
+        </div>
+
+        <!-- Evaluator Login -->
+        <div id="evalLoginCard" class="card hidden">
+            <h2>Evaluator Login</h2>
+            <label>Email</label>
+            <input type="email" id="evalEmail" placeholder="your@email.com">
+            <label>Access Code</label>
+            <input type="text" id="evalCode" placeholder="6-digit code">
+            <div id="evalLoginMsg" class="error hidden"></div>
+            <div class="toolbar" style="margin-top: 16px;">
+                <button class="btn" onclick="Auth.evaluatorLogin()">Login</button>
+                <button class="btn secondary" onclick="UI.backToGate()">Back</button>
+            </div>
+        </div>
+
+        <!-- Admin App -->
+        <div id="adminApp" class="hidden">
+            <div id="adminTabs"></div>
+            <div id="adminView"></div>
+        </div>
+
+        <!-- Evaluator App -->
+        <div id="evalApp" class="hidden">
+            <!-- Welcome -->
+            <div id="evalWelcome" class="card hidden">
+                <h2>Welcome, Evaluator!</h2>
+                <p class="hint">Please complete your profile before starting evaluations.</p>
+                <div class="toolbar" style="margin-top: 16px;">
+                    <button class="btn" onclick="Eval.showProfileForm()">Continue to Profile</button>
+                </div>
+            </div>
+
+            <!-- Profile -->
+            <div id="evalProfile" class="card hidden">
+                <h2>Your Profile</h2>
+                <label>Name *</label>
+                <input type="text" id="profName" placeholder="Your full name">
+                <label>Expertise</label>
+                <input type="text" id="profExpertise" placeholder="e.g. Robotics, AI, Biology">
+                <label>Notes</label>
+                <textarea id="profNotes" placeholder="Any additional information"></textarea>
+                <div id="profMsg" class="error hidden"></div>
+                <div class="toolbar" style="margin-top: 16px;">
+                    <button class="btn" onclick="Eval.saveProfile()">Save & Continue</button>
+                </div>
+            </div>
+
+            <!-- Projects -->
+            <div id="evalProjects" class="card hidden">
+                <div class="flex-between">
+                    <h2>Assigned Projects</h2>
+                    <div id="evalBadge" class="pill hidden"></div>
+                </div>
+                <div class="progress-bar">
+                    <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+                </div>
+                <div style="margin: 8px 0;">
+                    <span id="progressCount">0 / 0 completed</span>
+                    <span class="hint" style="margin-left: 12px;" id="leftCount"></span>
+                </div>
+                <div id="evalProjectTable"></div>
+                <div id="evalToolbar" class="toolbar" style="margin-top: 16px;"></div>
+            </div>
+        </div>
+
+        <!-- Modal Container -->
+        <div id="modalContainer"></div>
+    </div>
+
+    <script src="frontend.js"></script>
+</body>
+</html>
