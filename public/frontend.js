@@ -60,6 +60,16 @@ const API = {
         DB.panels = data.panels || [];
         DB.results = data.results || [];
         DB.evaluatorState = data.evaluatorState || {};
+
+        // Default Carousel Slides if none exist
+        if (!DB.settings.carouselSlides || DB.settings.carouselSlides.length === 0) {
+            DB.settings.carouselSlides = [
+                { imageUrl: 'carousel1.png', title: 'Innovative Science Carnival', description: 'Empowering future scientists to showcase their groundbreaking ideas.' },
+                { imageUrl: 'carousel2.png', title: 'Digital Evaluation Excellence', description: 'Streamlined, fair, and transparent evaluation for every project.' },
+                { imageUrl: 'carousel3.png', title: 'The Future of Innovation', description: 'Witness the next generation of engineers and dreamers in action.' }
+            ];
+        }
+
         console.log('Data loaded:', DB);
         return data;
     },
@@ -140,6 +150,15 @@ const U = {
         const blob = new Blob([typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url);
     },
+    downloadExcel(filename, sheetsData) {
+        // sheetsData: { "Sheet Name": [data_array], ... }
+        const wb = XLSX.utils.book_new();
+        for (const [name, data] of Object.entries(sheetsData)) {
+            const ws = XLSX.utils.json_to_sheet(data);
+            XLSX.utils.book_append_sheet(wb, ws, name);
+        }
+        XLSX.writeFile(wb, filename);
+    },
     csv(rows) {
         if (!rows || !rows.length) return '';
         const keys = [...new Set(rows.flatMap(r => Object.keys(r)))];
@@ -213,6 +232,77 @@ const UI = {
     hideLoading() {
         const loader = document.getElementById('globalLoading');
         if (loader) loader.remove();
+    },
+    alert(message, type = 'info', title = 'Notification') {
+        return new Promise(resolve => {
+            const existing = document.querySelector('.custom-alert-wrap');
+            if (existing) existing.remove();
+
+            const dlg = U.el(`<div class="custom-alert-wrap">
+                <div class="custom-alert ${type}">
+                    <h3>${title}</h3>
+                    <p style="white-space: pre-wrap;">${message}</p>
+                    <button class="btn" style="width:100%">OK</button>
+                </div>
+            </div>`);
+            document.body.appendChild(dlg);
+
+            dlg.querySelector('button').onclick = () => {
+                dlg.remove();
+                resolve();
+            };
+        });
+    },
+    confirm(message, title = 'Confirm Action') {
+        return new Promise(resolve => {
+            const existing = document.querySelector('.custom-alert-wrap');
+            if (existing) existing.remove();
+
+            const dlg = U.el(`<div class="custom-alert-wrap">
+                <div class="custom-alert info">
+                    <h3>${title}</h3>
+                    <p style="white-space: pre-wrap;">${message}</p>
+                    <div class="toolbar" style="gap:10px">
+                        <button class="btn secondary" id="cancelConfirm" style="flex:1">Cancel</button>
+                        <button class="btn" id="okConfirm" style="flex:1">Confirm</button>
+                    </div>
+                </div>
+            </div>`);
+            document.body.appendChild(dlg);
+
+            dlg.querySelector('#cancelConfirm').onclick = () => { dlg.remove(); resolve(false); };
+            dlg.querySelector('#okConfirm').onclick = () => { dlg.remove(); resolve(true); };
+        });
+    },
+    initCarousel() {
+        const slides = DB.settings.carouselSlides || [];
+        const track = document.querySelector('.carousel-track');
+        if (!track) return;
+
+        if (slides.length === 0) {
+            document.getElementById('landingCarousel').style.display = 'none';
+            return;
+        }
+
+        track.innerHTML = slides.map((s, i) => `
+            <div class="carousel-slide ${i === 0 ? 'active' : ''}" style="background-image: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.8)), url('${s.imageUrl}')">
+                <div class="carousel-content">
+                    <h1>${s.title || 'Welcome'}</h1>
+                    <p>${s.description || ''}</p>
+                </div>
+            </div>
+        `).join('');
+
+        let current = 0;
+        if (slides.length > 1) {
+            setInterval(() => {
+                const slides = track.querySelectorAll('.carousel-slide');
+                if (!slides.length) return;
+                slides[current].classList.remove('active');
+                current = (current + 1) % slides.length;
+                slides[current].classList.add('active');
+            }, 5000);
+        }
     }
 };
 
@@ -272,14 +362,14 @@ const Auth = {
         }
     },
 
-    logoutAdmin() {
-        if (!confirm('Logout admin?')) return;
+    async logoutAdmin() {
+        if (!await UI.confirm('Are you sure you want to log out from Admin panel?', 'Logout admin?')) return;
         this.currentAdmin = null;
         UI.backToGate();
     },
 
-    logoutEvaluator() {
-        if (!confirm('Logout evaluator?')) return;
+    async logoutEvaluator() {
+        if (!await UI.confirm('Are you sure you want to log out from Evaluator panel?', 'Logout evaluator?')) return;
         this.currentEval = null;
         UI.backToGate();
     }
@@ -502,7 +592,24 @@ const Admin = {
     },
 
     settings(host) {
-        host.innerHTML = `<div class="row"><div class="col-6 card"><h3>Branding</h3>
+        const carouselHtml = (DB.settings.carouselSlides || []).map((s, i) => `
+            <div class="card" style="margin-bottom:8px;padding:12px">
+                <div class="flex-between">
+                    <b>Slide ${i + 1}</b>
+                    <button class="btn danger" onclick="this.closest('.card').remove()">Remove</button>
+                </div>
+                <div class="row" style="margin-top:8px">
+                    <div class="col-6"><label>Image URL</label><input class="c_url" value="${s.imageUrl || ''}"></div>
+                    <div class="col-6"><label>Title</label><input class="c_title" value="${s.title || ''}"></div>
+                    <div class="col-6" style="grid-column:span 2"><label>Description</label><input class="c_desc" value="${s.description || ''}"></div>
+                </div>
+            </div>
+        `).join('');
+
+        host.innerHTML = `
+            <div class="row">
+                <div class="col-6 card">
+                    <h3>Branding</h3>
                     <label>Event Title</label><input id="setEventTitle" value="${DB.settings.eventTitle}">
                     <label>Subtitle</label><input id="setSubtitle" value="${DB.settings.subtitle}">
                     <label>Logo URL</label><input id="setLogo" value="${DB.settings.logoUrl}">
@@ -511,12 +618,37 @@ const Admin = {
                     <label>Admin Pass (Backend)</label><input id="setAdminPass" value="${DB.settings.adminPass}">
                     <div class="toolbar" style="margin-top:10px"><button class="btn" onclick="Admin.saveSettings()">Save Branding</button></div>
                 </div>
-                 <div class="col-6 card">
-                    <h3>Danger Zone</h3>
-                    <p class="hint">Reset all system data (Projects, Evaluators, Results).</p>
-                    <button class="btn danger" onclick="Admin.resetAllData()">Reset System</button>
-                 </div>
-                </div>`;
+                <div class="col-6">
+                    <div class="card">
+                        <h3>Carousel Management</h3>
+                        <p class="hint">Images appear on the landing page before login.</p>
+                        <div id="carouselContainer" style="margin-top:12px">${carouselHtml}</div>
+                        <button class="btn" style="width:100%;margin-top:10px" onclick="Admin.addCarouselSlide()">+ Add Slide</button>
+                    </div>
+                    <div class="card danger-zone-card">
+                        <h3>Danger Zone</h3>
+                        <p class="hint">Reset all system data (Projects, Evaluators, Panels, Results).</p>
+                        <button class="btn danger" onclick="Admin.resetAllData()">Reset System</button>
+                    </div>
+                </div>
+            </div>`;
+    },
+    addCarouselSlide() {
+        const container = document.getElementById('carouselContainer');
+        const i = container.children.length;
+        const div = U.el(`
+            <div class="card" style="margin-bottom:8px;padding:12px">
+                <div class="flex-between">
+                    <b>Slide ${i + 1} (New)</b>
+                    <button class="btn danger" onclick="this.closest('.card').remove()">Remove</button>
+                </div>
+                <div class="row" style="margin-top:8px">
+                    <div class="col-6"><label>Image URL</label><input class="c_url" placeholder="carousel1.png"></div>
+                    <div class="col-6"><label>Title</label><input class="c_title" placeholder="Slide Title"></div>
+                    <div class="col-6" style="grid-column:span 2"><label>Description</label><input class="c_desc" placeholder="Slide Description"></div>
+                </div>
+            </div>`);
+        container.appendChild(div);
     },
     rubric(host) {
         // Rubric Rows
@@ -572,14 +704,22 @@ const Admin = {
         s.welcomeBody = document.getElementById('setWelcomeBody').value;
         s.adminPass = document.getElementById('setAdminPass').value;
 
-        // Do not touch rubric here!
+        // Collect Carousel
+        const slides = [];
+        document.querySelectorAll('#carouselContainer > .card').forEach(row => {
+            const imageUrl = (row.querySelector('.c_url').value || '').trim();
+            const title = (row.querySelector('.c_title').value || '').trim();
+            const description = (row.querySelector('.c_desc').value || '').trim();
+            if (imageUrl) slides.push({ imageUrl, title, description });
+        });
+        s.carouselSlides = slides;
 
         UI.showLoading('Saving...');
         await API.saveSettings(s);
         await API.loadData();
         UI.hideLoading();
         UI.syncBranding();
-        alert('Branding Saved');
+        UI.alert('Settings Saved', 'success', 'Success');
     },
     async saveRubric() {
         const s = { ...DB.settings };
@@ -599,16 +739,73 @@ const Admin = {
         await API.saveSettings(s);
         await API.loadData();
         UI.hideLoading();
-        alert('Rubric Saved');
+        UI.alert('Rubric Saved', 'success', 'Success');
     },
     async resetAllData() {
-        if (!confirm('DELETE ALL DATA? This cannot be undone.')) return;
-        UI.showLoading('Resetting...');
-        await API.resetAll();
-        await API.loadData();
-        UI.hideLoading();
-        this.render();
-        alert('System Reset.');
+        const dlg = U.el(`<div class="modal-wrap"><div class="modal" style="border: 2px solid var(--bad)">
+            <h3 style="color: var(--bad)">System Reset Confirmation</h3>
+            <p>You are about to delete <b>ALL</b> data from the system. This includes:</p>
+            <ul style="margin: 10px 20px; color: var(--muted); font-size: 14px;">
+                <li>All Projects (${DB.projects.length})</li>
+                <li>All Evaluators (${DB.evaluators.length})</li>
+                <li>All Jury Panels (${DB.panels.length})</li>
+                <li>All Evaluation Results (${DB.results.length})</li>
+            </ul>
+            <p style="margin-top: 12px;">The system will automatically download CSV backups before proceeding.</p>
+            
+            <label style="margin-top: 16px;">Reason for Reset (Required)</label>
+            <textarea id="resetReason" placeholder="e.g. Starting Round 2, Testing complete, etc." style="height: 80px;"></textarea>
+            
+            <div class="toolbar" style="margin-top: 20px; justify-content: flex-end;">
+                <button class="btn secondary" id="cancelReset">Cancel</button>
+                <button class="btn danger" id="confirmReset" style="padding-left: 24px; padding-right: 24px;">BACKUP & RESET ALL DATA</button>
+            </div>
+        </div></div>`);
+        document.body.appendChild(dlg);
+
+        dlg.querySelector('#cancelReset').onclick = () => dlg.remove();
+        dlg.querySelector('#confirmReset').onclick = async () => {
+            const reason = dlg.querySelector('#resetReason').value.trim();
+            if (!reason) return UI.alert('Please provide a reason for the reset.', 'error', 'Error');
+
+            if (!await UI.confirm(`FINAL WARNING: Are you sure you want to delete everything?\nReason: ${reason}`, 'DANGER: SYSTEM RESET')) return;
+
+            try {
+                UI.showLoading('Exporting Backup...');
+
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                const backupData = {};
+
+                if (DB.projects.length) backupData["Projects"] = DB.projects;
+                if (DB.evaluators.length) backupData["Evaluators"] = DB.evaluators;
+                if (DB.panels.length) backupData["Panels"] = DB.panels;
+                if (DB.results.length) {
+                    backupData["Scores"] = DB.results.map(r => ({
+                        ...r,
+                        project: DB.projects.find(p => p.id === r.projectId)?.title,
+                        evaluator: DB.evaluators.find(e => e.id === r.evaluatorId)?.name
+                    }));
+                }
+
+                if (Object.keys(backupData).length > 0) {
+                    U.downloadExcel(`FULL_BACKUP_${timestamp}.xlsx`, backupData);
+                }
+
+                // Small delay to let download trigger
+                await new Promise(r => setTimeout(r, 1000));
+
+                UI.showLoading('Resetting System...');
+                await API.resetAll();
+                await API.loadData();
+                UI.hideLoading();
+                dlg.remove();
+                this.render();
+                await UI.alert('System Reset successfully. Your backup has been downloaded as a single Excel file.', 'success', 'Success');
+            } catch (err) {
+                UI.hideLoading();
+                UI.alert('Error: ' + err.message, 'error', 'Error');
+            }
+        };
     },
 
     projects(host) {
@@ -625,7 +822,7 @@ const Admin = {
             p.category = dlg.querySelector('#p_cat').value;
             p.team = dlg.querySelector('#p_team').value;
             p.school = dlg.querySelector('#p_school').value;
-            if (!p.title) return alert('Title required');
+            if (!p.title) return UI.alert('Title required', 'error', 'Error');
 
             try {
                 UI.showLoading('Saving...');
@@ -641,12 +838,12 @@ const Admin = {
                 this.projects(document.getElementById('adminView'));
             } catch (err) {
                 UI.hideLoading();
-                alert('Error: ' + err.message);
+                UI.alert('Error: ' + err.message, 'error', 'Error');
             }
         };
     },
     async deleteProject(id) {
-        if (!confirm('Delete?')) return;
+        if (!await UI.confirm('Are you sure you want to delete this project? This action cannot be undone.', 'Delete Project?')) return;
         await API.deleteProject(id);
         await API.loadData();
         this.projects(document.getElementById('adminView'));
@@ -666,7 +863,7 @@ const Admin = {
             e.email = dlg.querySelector('#e_email').value;
             e.expertise = dlg.querySelector('#e_exp').value;
             e.code = dlg.querySelector('#e_code').value;
-            if (!e.email) return alert('Email required');
+            if (!e.email) return UI.alert('Email required', 'error', 'Error');
 
             try {
                 UI.showLoading('Saving...');
@@ -682,12 +879,12 @@ const Admin = {
                 this.evaluators(document.getElementById('adminView'));
             } catch (err) {
                 UI.hideLoading();
-                alert('Error: ' + err.message);
+                UI.alert('Error: ' + err.message, 'error', 'Error');
             }
         };
     },
     async deleteEvaluator(id) {
-        if (!confirm('Delete?')) return;
+        if (!await UI.confirm('Are you sure you want to delete this evaluator? All their completed evaluations will remain but they can no longer log in.', 'Delete Evaluator?')) return;
         await API.deleteEvaluator(id);
         await API.loadData();
         this.evaluators(document.getElementById('adminView'));
@@ -703,8 +900,29 @@ const Admin = {
     },
     editPanel(id) {
         const pa = id ? DB.panels.find(x => x.id === id) : { id: U.uid('panel'), name: 'Panel ' + (DB.panels.length + 1), evaluatorIds: [], projectIds: [] };
-        const evalOpts = DB.evaluators.map(e => `<label class="chip" style="cursor:pointer"><input type="checkbox" data-eid value="${e.id}" style="width:auto;margin-right:6px"> ${e.name || e.email}</label>`).join(' ');
-        const projOpts = DB.projects.map(p => `<label class="chip" style="cursor:pointer"><input type="checkbox" data-pid value="${p.id}" style="width:auto;margin-right:6px"> ${p.title}</label>`).join(' ');
+
+        // Calculate already assigned items (excluding current panel if editing)
+        const otherPanels = DB.panels.filter(p => p.id !== pa.id);
+        const assignedEids = new Set(otherPanels.flatMap(p => p.evaluatorIds));
+        const assignedPids = new Set(otherPanels.flatMap(p => p.projectIds));
+
+        const evalOpts = DB.evaluators.map(e => {
+            const isAssigned = assignedEids.has(e.id);
+            const style = isAssigned ? 'background: #1a1e2e; cursor: not-allowed; border: 1px dashed #444; color: #666;' : 'cursor:pointer';
+            const disabled = isAssigned ? 'disabled' : '';
+            const checked = pa.evaluatorIds.includes(e.id) ? 'checked' : '';
+            const label = isAssigned ? `${e.name || e.email} (Assigned)` : (e.name || e.email);
+            return `<label class="chip" style="${style}"><input type="checkbox" data-eid value="${e.id}" style="width:auto;margin-right:6px" ${disabled} ${checked}> ${label}</label>`;
+        }).join(' ');
+
+        const projOpts = DB.projects.map(p => {
+            const isAssigned = assignedPids.has(p.id);
+            const style = isAssigned ? 'background: #1a1e2e; cursor: not-allowed; border: 1px dashed #444; color: #666;' : 'cursor:pointer';
+            const disabled = isAssigned ? 'disabled' : '';
+            const checked = pa.projectIds.includes(p.id) ? 'checked' : '';
+            const label = isAssigned ? `${p.title} (Assigned)` : p.title;
+            return `<label class="chip" style="${style}"><input type="checkbox" data-pid value="${p.id}" style="width:auto;margin-right:6px" ${disabled} ${checked}> ${label}</label>`;
+        }).join(' ');
 
         const dlg = U.el(`<div class="modal-wrap"><div class="modal"><h3>${id ? 'Edit' : 'Create'} Panel</h3><label>Name</label><input id="pa_name" value="${pa.name}"><label>Evaluators</label><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">${evalOpts || 'No evaluators'}</div><label>Projects</label><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">${projOpts || 'No projects'}</div><div class="toolbar" style="margin-top:12px"><button class="btn" id="saveBtn">Save</button><button class="btn secondary" id="cancelBtn">Cancel</button></div></div></div>`);
         document.body.appendChild(dlg);
@@ -715,9 +933,9 @@ const Admin = {
             pa.name = dlg.querySelector('#pa_name').value;
             pa.evaluatorIds = [...dlg.querySelectorAll('[data-eid]:checked')].map(x => x.value);
             pa.projectIds = [...dlg.querySelectorAll('[data-pid]:checked')].map(x => x.value);
-            if (!pa.name) return alert('Name required');
-            if (pa.evaluatorIds.length < 3) return alert('Please select at least 3 evaluators.');
-            if (pa.projectIds.length < 2) return alert('Please select at least 2 projects.');
+            if (!pa.name) return UI.alert('Name required', 'error', 'Error');
+            if (pa.evaluatorIds.length < 3) return UI.alert('Please select at least 3 evaluators.', 'error', 'Error');
+            if (pa.projectIds.length < 2) return UI.alert('Please select at least 2 projects.', 'error', 'Error');
 
             try {
                 UI.showLoading('Saving...');
@@ -733,12 +951,12 @@ const Admin = {
                 this.panels(document.getElementById('adminView'));
             } catch (err) {
                 UI.hideLoading();
-                alert('Error: ' + err.message);
+                UI.alert('Error: ' + err.message, 'error', 'Error');
             }
         };
     },
     async deletePanel(id) {
-        if (!confirm('Delete?')) return;
+        if (!await UI.confirm('Are you sure you want to delete this panel? This will unassign all projects and evaluators from this panel.', 'Delete Panel?')) return;
         await API.deletePanel(id);
         await API.loadData();
         this.panels(document.getElementById('adminView'));
@@ -766,7 +984,7 @@ const Eval = {
         const name = document.getElementById('profName').value.trim();
         const expertise = document.getElementById('profExpertise').value.trim();
         const notes = document.getElementById('profNotes').value.trim();
-        if (!name) return alert('Name required');
+        if (!name) return UI.alert('Name required', 'error', 'Error');
 
         const ev = { ...Auth.currentEval, name, expertise, notes };
         UI.showLoading('Saving Profile...');
@@ -849,7 +1067,7 @@ const Eval = {
                 total += val;
             });
 
-            if (!valid) return alert('Please enter valid scores within range');
+            if (!valid) return UI.alert('Please enter valid scores within the specified range for each criteria.', 'error', 'Invalid Input');
 
             const result = {
                 id: prior?.id || U.uid('result'),
@@ -880,7 +1098,7 @@ const Eval = {
     },
 
     async doFinalize() {
-        if (!confirm('Finalize all? You cannot edit after this.')) return;
+        if (!await UI.confirm('Are you sure you want to finalize ALL evaluations? You will NOT be able to edit your scores after this.', 'Finalize All?')) return;
         UI.showLoading('Finalizing...');
         await API.finalizeEvaluator(Auth.currentEval.id);
         await API.loadData();
@@ -921,6 +1139,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         await API.loadData();
         document.querySelector('.container').classList.remove('hidden'); // Show UI if loaded
+        UI.initCarousel();
     } catch (e) {
         console.log('Backend not reachable yet needs login');
     }
