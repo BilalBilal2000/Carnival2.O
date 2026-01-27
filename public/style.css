@@ -278,7 +278,7 @@ th {
 
     .toolbar {
         flex-direction: row;
-        gap: 8px;
+        gap: 4px;
         justify-content: flex-start;
         overflow-x: auto;
         padding-bottom: 4px;
@@ -303,14 +303,14 @@ th {
     }
 
     .header {
-        padding: 12px;
-        flex-direction: column;
+        padding: 8px;
+        flex-direction: row;
         gap: 12px;
         text-align: center;
     }
 
     .header-left {
-        flex-direction: column;
+        flex-direction: row;
         text-align: center;
     }
 
@@ -495,15 +495,25 @@ th {
 
 /* Integrated Carousel */
 #landingCarousel {
-    background: var(--card);
+    background: #000;
     order: 1;
-    /* Default for mobile */
+    /* Top on mobile */
+}
+
+.portal-access-wrap {
+    order: 2;
+    /* Bottom on mobile */
 }
 
 @media (min-width: 769px) {
     #landingCarousel {
         order: 2;
-        /* Move to right on desktop */
+        /* Right on desktop */
+    }
+
+    .portal-access-wrap {
+        order: 1;
+        /* Left on desktop */
     }
 }
 
@@ -593,7 +603,7 @@ th {
     background: var(--border);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 24px;
+    padding: 10px;
     transition: all 0.3s ease;
 }
 
