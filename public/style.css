@@ -305,18 +305,17 @@ th {
     .header {
         padding: 8px;
         flex-direction: row;
-        gap: 12px;
-        text-align: center;
+        text-align: start;
     }
 
     .header-left {
         flex-direction: row;
-        text-align: center;
+        text-align: left;
     }
 
     #userControls {
         width: 100%;
-        justify-content: center;
+        justify-content: end;
         margin-top: 8px;
     }
 
@@ -623,4 +622,11 @@ th {
     justify-content: center;
     border-radius: 12px;
     border: 1px solid var(--border);
+}
+
+/* Resize Login Forms */
+#adminLoginCard,
+#evalLoginCard {
+    max-width: 450px;
+    margin: 40px auto;
 }

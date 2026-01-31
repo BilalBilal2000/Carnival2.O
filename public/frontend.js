@@ -40,7 +40,14 @@ const API = {
         try {
             const res = await fetch(API_BASE + url, { ...options, headers });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Request failed');
+            if (!res.ok) {
+                if (res.status === 401 || res.status === 403) {
+                    // Invalid token, force logout
+                    sessionStorage.removeItem('session');
+                    if (API.token) window.location.reload();
+                }
+                throw new Error(data.error || 'Request failed');
+            }
             return data;
         } catch (err) {
             console.error('API Error:', err);
@@ -326,6 +333,7 @@ const Auth = {
             const res = await API.adminLogin(email, pass);
             API.token = res.token;
             this.currentAdmin = { email };
+            sessionStorage.setItem('session', JSON.stringify({ token: res.token, role: 'admin', user: { email } }));
 
             await API.loadData();
             UI.hideLoading();
@@ -350,6 +358,7 @@ const Auth = {
             const res = await API.evaluatorLogin(email, code);
             API.token = res.token;
             this.currentEval = res.evaluator;
+            sessionStorage.setItem('session', JSON.stringify({ token: res.token, role: 'evaluator', user: res.evaluator }));
 
             await API.loadData();
             UI.hideLoading();
@@ -365,12 +374,14 @@ const Auth = {
     async logoutAdmin() {
         if (!await UI.confirm('Are you sure you want to log out from Admin panel?', 'Logout admin?')) return;
         this.currentAdmin = null;
+        sessionStorage.removeItem('session');
         UI.backToGate();
     },
 
     async logoutEvaluator() {
         if (!await UI.confirm('Are you sure you want to log out from Evaluator panel?', 'Logout evaluator?')) return;
         this.currentEval = null;
+        sessionStorage.removeItem('session');
         UI.backToGate();
     }
 };
@@ -393,15 +404,17 @@ const Admin = {
             b.onclick = (e) => this.switch(e.target.getAttribute('data-id'));
             tabs.appendChild(b);
         });
-        this.switch('scores');
+        const lastTab = sessionStorage.getItem('lastAdminTab') || 'scores';
+        this.switch(lastTab);
         UI.syncBranding();
     },
     switch(id) {
+        sessionStorage.setItem('lastAdminTab', id);
         document.querySelectorAll('#adminTabs .tab').forEach(tb => tb.classList.remove('active'));
         const targetTab = document.querySelector(`#adminTabs .tab[data-id="${id}"]`);
         if (targetTab) targetTab.classList.add('active');
         const v = document.getElementById('adminView');
-        this[id](v);
+        if (this[id]) this[id](v);
         UI.syncBranding();
     },
 
@@ -656,7 +669,7 @@ const Admin = {
             <div class="card" style="margin-bottom:8px;padding:12px">
                 <div class="flex-between">
                     <b>Item ${i + 1}</b>
-                    <button class="btn danger" onclick="document.getElementById('rubric_row_${i}').remove()">Remove</button>
+                    <button class="btn danger" onclick="this.closest('.card').remove()">Remove</button>
                 </div>
                 <div class="row" id="rubric_row_${i}" style="margin-top:8px">
                     <div class="col-6"><label>Key (internal)</label><input class="r_key" value="${r.key}"></div>
@@ -810,7 +823,103 @@ const Admin = {
 
     projects(host) {
         const list = DB.projects.map(p => `<tr><td><b>${p.title}</b><div class="hint">${p.category}</div></td><td>${p.team}</td><td>${p.school}</td><td><div class="toolbar"><button class="btn" onclick="Admin.editProject('${p.id}')">Edit</button><button class="btn danger" onclick="Admin.deleteProject('${p.id}')">Del</button></div></td></tr>`).join('');
-        host.innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="btn" onclick="Admin.editProject()">Add Project</button></div><div class="card"><h3>Projects (${DB.projects.length})</h3><div class="table-wrapper"><table><thead><tr><th>Title</th><th>SDG Goals</th><th>School</th><th>Actions</th></tr></thead><tbody>${list || '<tr><td colspan="4" style="text-align:center">No Projects</td></tr>'}</tbody></table></div></div>`;
+        host.innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="btn" onclick="Admin.editProject()">Add Project</button><button class="btn secondary" onclick="Admin.uploadProjects()">Import Excel</button></div><div class="card"><h3>Projects (${DB.projects.length})</h3><div class="table-wrapper"><table><thead><tr><th>Title</th><th>SDG Goals</th><th>School</th><th>Actions</th></tr></thead><tbody>${list || '<tr><td colspan="4" style="text-align:center">No Projects</td></tr>'}</tbody></table></div></div>`;
+    },
+    uploadProjects() {
+        // Create hidden file input
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.xlsx, .xls, .csv';
+        input.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async (evt) => {
+                try {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+                    if (json.length === 0) return UI.alert('No data found in file', 'error', 'Error');
+
+                    // Check headers of first row to map
+                    // Expected: Title, Theme, SDG Goals, School
+                    // Helper to fuzzy match keys or stick to exact
+                    const mapKey = (row, keyCandidates) => {
+                        const keys = Object.keys(row);
+                        const match = keys.find(k => keyCandidates.some(c => k.toLowerCase().includes(c.toLowerCase())));
+                        return match ? row[match] : '';
+                    };
+
+                    // 1. Pre-scan for duplicates
+                    const duplicates = [];
+                    const seenTitlesInFile = new Set();
+                    const validRows = [];
+
+                    for (let i = 0; i < json.length; i++) {
+                        const row = json[i];
+                        const title = mapKey(row, ['Title', 'Project Name', 'Project']);
+                        if (!title) continue; // Skip empty titles
+
+                        const lowerTitle = String(title).trim().toLowerCase();
+
+                        // Check within file
+                        if (seenTitlesInFile.has(lowerTitle)) {
+                            duplicates.push(`Row ${i + 2}: "${title}" (Duplicate in file)`);
+                            continue;
+                        }
+                        seenTitlesInFile.add(lowerTitle);
+
+                        // Check in DB
+                        const exists = DB.projects.find(p => p.title.toLowerCase() === lowerTitle);
+                        if (exists) {
+                            duplicates.push(`Row ${i + 2}: "${title}" (Already exists in system)`);
+                            continue;
+                        }
+
+                        validRows.push({ row, title });
+                    }
+
+                    if (duplicates.length > 0) {
+                        return UI.alert('Duplicate projects found. Please remove them and try again:\n\n' + duplicates.join('\n'), 'error', 'Import Blocked');
+                    }
+
+                    let addedCount = 0;
+                    UI.showLoading(`Importing ${validRows.length} projects...`);
+
+                    for (const { row, title } of validRows) {
+                        const category = mapKey(row, ['Theme', 'Category']);
+                        const team = mapKey(row, ['SDG', 'Goal', 'Team']);
+                        const school = mapKey(row, ['School', 'College', 'Institution']);
+
+                        const p = {
+                            id: U.uid('project'),
+                            title: title,
+                            category: category || 'General',
+                            team: team || '',
+                            school: school || ''
+                        };
+                        await API.saveProject(p);
+                        addedCount++;
+                    }
+
+                    await API.loadData();
+                    UI.hideLoading();
+                    this.projects(document.getElementById('adminView'));
+                    UI.alert(`Successfully imported ${addedCount} projects.`, 'success', 'Import Complete');
+
+                } catch (err) {
+                    UI.hideLoading();
+                    console.error(err);
+                    UI.alert('Failed to parse file: ' + err.message, 'error', 'Import Failed');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        };
+        input.click();
     },
     editProject(id) {
         const p = id ? DB.projects.find(x => x.id === id) : { id: U.uid('project'), title: '', category: '', team: '', school: '' };
@@ -851,7 +960,102 @@ const Admin = {
 
     evaluators(host) {
         const list = DB.evaluators.map(e => `<tr><td><b>${e.name || '-'}</b><div class="hint">${e.email}</div></td><td>${e.expertise || '-'}</td><td>${e.code}</td><td><div class="toolbar"><button class="btn" onclick="Admin.editEvaluator('${e.id}')">Edit</button><button class="btn danger" onclick="Admin.deleteEvaluator('${e.id}')">Del</button></div></td></tr>`).join('');
-        host.innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="btn" onclick="Admin.editEvaluator()">Add Evaluator</button></div><div class="card"><h3>Evaluators (${DB.evaluators.length})</h3><div class="table-wrapper"><table><thead><tr><th>Name/Email</th><th>Expertise</th><th>Code</th><th>Actions</th></tr></thead><tbody>${list || '<tr><td colspan="4" style="text-align:center">No Evaluators</td></tr>'}</tbody></table></div></div>`;
+        host.innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="btn" onclick="Admin.editEvaluator()">Add Evaluator</button><button class="btn secondary" onclick="Admin.uploadEvaluators()">Import Excel</button></div><div class="card"><h3>Evaluators (${DB.evaluators.length})</h3><div class="table-wrapper"><table><thead><tr><th>Name/Email</th><th>Expertise</th><th>Code</th><th>Actions</th></tr></thead><tbody>${list || '<tr><td colspan="4" style="text-align:center">No Evaluators</td></tr>'}</tbody></table></div></div>`;
+    },
+    uploadEvaluators() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.xlsx, .xls, .csv';
+        input.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async (evt) => {
+                try {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+                    if (json.length === 0) return UI.alert('No data found in file', 'error', 'Error');
+
+                    const mapKey = (row, keyCandidates) => {
+                        const keys = Object.keys(row);
+                        const match = keys.find(k => keyCandidates.some(c => k.toLowerCase().includes(c.toLowerCase())));
+                        return match ? row[match] : '';
+                    };
+
+                    // 1. Pre-scan for duplicates
+                    const duplicates = [];
+                    const seenEmailsInFile = new Set();
+                    const validRows = [];
+
+                    for (let i = 0; i < json.length; i++) {
+                        const row = json[i];
+                        const email = mapKey(row, ['Email', 'E-mail', 'Mail']);
+
+                        // If no email, maybe check name, but email is primary key for login. 
+                        // If empty email, we can skip or error. Let's skip invalid rows but warn if needed.
+                        if (!email) continue;
+
+                        const lowerEmail = String(email).trim().toLowerCase();
+
+                        // Check within file
+                        if (seenEmailsInFile.has(lowerEmail)) {
+                            duplicates.push(`Row ${i + 2}: "${email}" (Duplicate in file)`);
+                            continue;
+                        }
+                        seenEmailsInFile.add(lowerEmail);
+
+                        // Check in DB
+                        const exists = DB.evaluators.find(e => e.email.toLowerCase() === lowerEmail);
+                        if (exists) {
+                            duplicates.push(`Row ${i + 2}: "${email}" (Already exists in system)`);
+                            continue;
+                        }
+
+                        validRows.push({ row, email });
+                    }
+
+                    if (duplicates.length > 0) {
+                        return UI.alert('Duplicate evaluators found. Please remove them and try again:\n\n' + duplicates.join('\n'), 'error', 'Import Blocked');
+                    }
+
+                    let addedCount = 0;
+                    UI.showLoading(`Importing ${validRows.length} evaluators...`);
+
+                    for (const { row, email } of validRows) {
+                        const name = mapKey(row, ['Name', 'Evaluator Name', 'Full Name']);
+                        const expertise = mapKey(row, ['Expertise', 'Domain', 'Subject']);
+                        const code = mapKey(row, ['Code', 'Access Code', 'Passcode']);
+
+                        const e = {
+                            id: U.uid('evaluator'),
+                            name: name || '',
+                            email: email,
+                            expertise: expertise || '',
+                            code: code || Math.floor(100000 + Math.random() * 900000)
+                        };
+                        await API.saveEvaluator(e);
+                        addedCount++;
+                    }
+
+                    await API.loadData();
+                    UI.hideLoading();
+                    this.evaluators(document.getElementById('adminView'));
+                    UI.alert(`Successfully imported ${addedCount} evaluators.`, 'success', 'Import Complete');
+
+                } catch (err) {
+                    UI.hideLoading();
+                    console.error(err);
+                    UI.alert('Failed to parse file: ' + err.message, 'error', 'Import Failed');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        };
+        input.click();
     },
     editEvaluator(id) {
         const e = id ? DB.evaluators.find(x => x.id === id) : { id: U.uid('evaluator'), name: '', email: '', expertise: '', code: Math.floor(100000 + Math.random() * 900000) };
@@ -1135,10 +1339,62 @@ const Eval = {
 
 // Init
 document.addEventListener('DOMContentLoaded', async () => {
-    // Try to connect to backend immediately
+    // Try to restore session
+    const sessionStr = sessionStorage.getItem('session');
+    if (sessionStr) {
+        try {
+            const session = JSON.parse(sessionStr);
+            if (session && session.token) {
+                API.token = session.token;
+
+                // Show loading initially while checking token/loading data
+                UI.showLoading('Restoring session...');
+
+                try {
+                    await API.loadData();
+
+                    if (session.role === 'admin') {
+                        Auth.currentAdmin = session.user;
+                        UI.show('adminApp');
+                        Admin.render();
+                    } else if (session.role === 'evaluator') {
+                        Auth.currentEval = session.user;
+                        // For evaluator, we might want to refresh the user profile from the loaded data to be safe
+                        const freshEval = DB.evaluators.find(e => e.id === session.user.id);
+                        if (freshEval) Auth.currentEval = freshEval;
+
+                        UI.show('evalWelcome'); // Or go straight to assigned if preferred
+                        // Optionally go to assigned directly:
+                        // Eval.goToAssigned(); 
+                    }
+
+                    document.querySelector('.container').classList.remove('hidden');
+                    UI.initCarousel();
+                    UI.hideLoading();
+                    return; // Exit, don't show login
+                } catch (e) {
+                    console.error('Session restore failed or invalid token:', e);
+                    sessionStorage.removeItem('session'); // Clear bad session
+                    UI.hideLoading();
+                }
+            }
+        } catch (e) {
+            console.error('Error parsing session:', e);
+            sessionStorage.removeItem('session');
+        }
+    }
+
+    // Default flow if no session or restore failed
     try {
         await API.loadData();
+        UI.syncBranding(); // Apply settings immediately
         document.querySelector('.container').classList.remove('hidden'); // Show UI if loaded
+
+        // If not logged in (no Auth.current...), show Role Gate
+        if (!Auth.currentAdmin && !Auth.currentEval) {
+            document.getElementById('roleGate').classList.remove('hidden');
+        }
+
         UI.initCarousel();
     } catch (e) {
         console.log('Backend not reachable yet needs login');
