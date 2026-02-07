@@ -41,9 +41,9 @@ app.post('/api/auth/admin-login', async (req, res) => {
     const { email, password } = req.body;
     try {
         const settings = await Setting.findOne();
-        // Default admin password if not set in DB
+        const dbEmail = settings?.adminEmail || 'admin@example.com';
         const dbPass = settings?.adminPass || 'admin123';
-        if (email === 'admin@example.com' && password === dbPass) {
+        if (email === dbEmail && password === dbPass) {
             const token = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: '1d' });
             return res.json({ ok: true, token });
         }

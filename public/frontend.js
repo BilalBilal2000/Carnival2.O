@@ -147,9 +147,21 @@ const API = {
 const U = {
     uid: (type = 'item') => {
         const prefix = { project: 'PRJ', evaluator: 'EVAL', panel: 'PNL', result: 'RES' }[type] || 'ID';
-        // Note: For a real DB, we rely on the server ID usually, but for new items we generate one for the frontend to track before save
-        // Simplified UUID generator
-        return prefix + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+        const list = { project: DB.projects, evaluator: DB.evaluators, panel: DB.panels, result: DB.results }[type] || [];
+
+        // Find the maximum existing numeric suffix
+        let max = 0;
+        list.forEach(item => {
+            if (item && item.id) {
+                const match = item.id.match(new RegExp(`^${prefix}(\\d+)$`));
+                if (match) {
+                    const num = parseInt(match[1]);
+                    if (num > max) max = num;
+                }
+            }
+        });
+
+        return prefix + (max + 1);
     },
     el: (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild },
     fmtDate: (ts) => new Date(ts).toLocaleString(),
@@ -628,6 +640,7 @@ const Admin = {
                     <label>Logo URL</label><input id="setLogo" value="${DB.settings.logoUrl}">
                     <label>Welcome Title</label><input id="setWelcomeTitle" value="${DB.settings.welcomeTitle}">
                     <label>Welcome Body</label><textarea id="setWelcomeBody">${DB.settings.welcomeBody}</textarea>
+                    <label>Admin Email</label><input id="setAdminEmail" value="${DB.settings.adminEmail || 'admin@example.com'}">
                     <label>Admin Pass (Backend)</label><input id="setAdminPass" value="${DB.settings.adminPass}">
                     <div class="toolbar" style="margin-top:10px"><button class="btn" onclick="Admin.saveSettings()">Save Branding</button></div>
                 </div>
@@ -715,6 +728,7 @@ const Admin = {
         s.logoUrl = document.getElementById('setLogo').value;
         s.welcomeTitle = document.getElementById('setWelcomeTitle').value;
         s.welcomeBody = document.getElementById('setWelcomeBody').value;
+        s.adminEmail = document.getElementById('setAdminEmail').value;
         s.adminPass = document.getElementById('setAdminPass').value;
 
         // Collect Carousel
@@ -903,6 +917,7 @@ const Admin = {
                             school: school || ''
                         };
                         await API.saveProject(p);
+                        DB.projects.push(p);
                         addedCount++;
                     }
 
@@ -1039,6 +1054,7 @@ const Admin = {
                             code: code || Math.floor(100000 + Math.random() * 900000)
                         };
                         await API.saveEvaluator(e);
+                        DB.evaluators.push(e);
                         addedCount++;
                     }
 

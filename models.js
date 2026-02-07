@@ -7,6 +7,7 @@ const SettingSchema = new mongoose.Schema({
     welcomeBody: { type: String, default: 'Please select your role to continue.' },
     logoUrl: { type: String, default: 'https://dummyimage.com/128x128/1f2a52/ffffff&text=SE' },
     adminPass: { type: String, default: 'admin123' },
+    adminEmail: { type: String, default: 'admin@example.com' },
     rubric: {
         type: [{
             key: String,
@@ -22,6 +23,12 @@ const SettingSchema = new mongoose.Schema({
             { key: 'design', label: 'Description of Design', description: 'How much solution is actually done? Knowledge of Software/Hardware. Future Scope.' },
             { key: 'delivery', label: 'Delivery/Presentation', description: 'Presented in a holistic way? Creativity in presentation. Confidence while answering.' }
         ]
+    },
+    subscription: {
+        plan: { type: String, enum: ['free', 'plus', 'ultra'], default: 'free' },
+        paymentId: String,
+        orderId: String,
+        paidAt: Date
     }
 }, { timestamps: true });
 
