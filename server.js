@@ -226,6 +226,26 @@ app.delete('/api/panels/:id', isAdmin, async (req, res) => {
     }
 });
 
+// --- Bulk Routes ---
+
+app.post('/api/projects/bulk', isAdmin, async (req, res) => {
+    try {
+        await Project.insertMany(req.body);
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/evaluators/bulk', isAdmin, async (req, res) => {
+    try {
+        await Evaluator.insertMany(req.body);
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // --- Results Routes ---
 
 // Evaluator saving a result (draft or final)

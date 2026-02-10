@@ -23,12 +23,6 @@ const SettingSchema = new mongoose.Schema({
             { key: 'design', label: 'Description of Design', description: 'How much solution is actually done? Knowledge of Software/Hardware. Future Scope.' },
             { key: 'delivery', label: 'Delivery/Presentation', description: 'Presented in a holistic way? Creativity in presentation. Confidence while answering.' }
         ]
-    },
-    subscription: {
-        plan: { type: String, enum: ['free', 'plus', 'ultra'], default: 'free' },
-        paymentId: String,
-        orderId: String,
-        paidAt: Date
     }
 }, { timestamps: true });
 

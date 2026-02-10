@@ -138,6 +138,12 @@ const API = {
     },
     async resetAll() {
         return this._request('/admin/reset', { method: 'POST' });
+    },
+    async bulkSaveProjects(projects) {
+        return this._request('/projects/bulk', { method: 'POST', body: JSON.stringify(projects) });
+    },
+    async bulkSaveEvaluators(evaluators) {
+        return this._request('/evaluators/bulk', { method: 'POST', body: JSON.stringify(evaluators) });
     }
 };
 
@@ -635,14 +641,16 @@ const Admin = {
             <div class="row">
                 <div class="col-6 card">
                     <h3>Branding</h3>
-                    <label>Event Title</label><input id="setEventTitle" value="${DB.settings.eventTitle}">
-                    <label>Subtitle</label><input id="setSubtitle" value="${DB.settings.subtitle}">
-                    <label>Logo URL</label><input id="setLogo" value="${DB.settings.logoUrl}">
-                    <label>Welcome Title</label><input id="setWelcomeTitle" value="${DB.settings.welcomeTitle}">
-                    <label>Welcome Body</label><textarea id="setWelcomeBody">${DB.settings.welcomeBody}</textarea>
-                    <label>Admin Email</label><input id="setAdminEmail" value="${DB.settings.adminEmail || 'admin@example.com'}">
-                    <label>Admin Pass (Backend)</label><input id="setAdminPass" value="${DB.settings.adminPass}">
-                    <div class="toolbar" style="margin-top:10px"><button class="btn" onclick="Admin.saveSettings()">Save Branding</button></div>
+                    <div id="brandingFields">
+                        <label>Event Title</label><input id="setEventTitle" value="${DB.settings.eventTitle}">
+                        <label>Subtitle</label><input id="setSubtitle" value="${DB.settings.subtitle}">
+                        <label>Logo URL</label><input id="setLogo" value="${DB.settings.logoUrl}">
+                        <label>Welcome Title</label><input id="setWelcomeTitle" value="${DB.settings.welcomeTitle}">
+                        <label>Welcome Body</label><textarea id="setWelcomeBody">${DB.settings.welcomeBody}</textarea>
+                        <label id="lblAdminEmail">Admin Email</label><input id="setAdminEmail" value="${DB.settings.adminEmail || 'admin@example.com'}">
+                        <label id="lblAdminPass">Admin Pass (Backend)</label><input id="setAdminPass" value="${DB.settings.adminPass}">
+                        <div class="toolbar" style="margin-top:10px"><button class="btn" onclick="Admin.saveSettings()">Save Branding</button></div>
+                    </div>
                 </div>
                 <div class="col-6">
                     <div class="card">
@@ -901,30 +909,30 @@ const Admin = {
                         return UI.alert('Duplicate projects found. Please remove them and try again:\n\n' + duplicates.join('\n'), 'error', 'Import Blocked');
                     }
 
-                    let addedCount = 0;
                     UI.showLoading(`Importing ${validRows.length} projects...`);
-
-                    for (const { row, title } of validRows) {
+                    const batch = validRows.map(({ row, title }) => {
                         const category = mapKey(row, ['Theme', 'Category']);
                         const team = mapKey(row, ['SDG', 'Goal', 'Team']);
                         const school = mapKey(row, ['School', 'College', 'Institution']);
-
-                        const p = {
+                        return {
                             id: U.uid('project'),
                             title: title,
                             category: category || 'General',
                             team: team || '',
                             school: school || ''
                         };
-                        await API.saveProject(p);
-                        DB.projects.push(p);
-                        addedCount++;
-                    }
+                    });
 
-                    await API.loadData();
-                    UI.hideLoading();
-                    this.projects(document.getElementById('adminView'));
-                    UI.alert(`Successfully imported ${addedCount} projects.`, 'success', 'Import Complete');
+                    try {
+                        await API.bulkSaveProjects(batch);
+                        await API.loadData();
+                        UI.hideLoading();
+                        this.projects(document.getElementById('adminView'));
+                        UI.alert(`Successfully imported ${batch.length} projects.`, 'success', 'Import Complete');
+                    } catch (err) {
+                        UI.hideLoading();
+                        UI.alert('Bulk save failed: ' + err.message, 'error');
+                    }
 
                 } catch (err) {
                     UI.hideLoading();
@@ -942,9 +950,6 @@ const Admin = {
         document.body.appendChild(dlg);
         dlg.querySelector('#cancelBtn').onclick = () => dlg.remove();
         dlg.querySelector('#saveBtn').onclick = async () => {
-            p.title = dlg.querySelector('#p_title').value;
-            p.category = dlg.querySelector('#p_cat').value;
-            p.team = dlg.querySelector('#p_team').value;
             p.school = dlg.querySelector('#p_school').value;
             if (!p.title) return UI.alert('Title required', 'error', 'Error');
 
@@ -1038,30 +1043,30 @@ const Admin = {
                         return UI.alert('Duplicate evaluators found. Please remove them and try again:\n\n' + duplicates.join('\n'), 'error', 'Import Blocked');
                     }
 
-                    let addedCount = 0;
                     UI.showLoading(`Importing ${validRows.length} evaluators...`);
-
-                    for (const { row, email } of validRows) {
+                    const batch = validRows.map(({ row, email }) => {
                         const name = mapKey(row, ['Name', 'Evaluator Name', 'Full Name']);
                         const expertise = mapKey(row, ['Expertise', 'Domain', 'Subject']);
                         const code = mapKey(row, ['Code', 'Access Code', 'Passcode']);
-
-                        const e = {
+                        return {
                             id: U.uid('evaluator'),
                             name: name || '',
                             email: email,
                             expertise: expertise || '',
                             code: code || Math.floor(100000 + Math.random() * 900000)
                         };
-                        await API.saveEvaluator(e);
-                        DB.evaluators.push(e);
-                        addedCount++;
-                    }
+                    });
 
-                    await API.loadData();
-                    UI.hideLoading();
-                    this.evaluators(document.getElementById('adminView'));
-                    UI.alert(`Successfully imported ${addedCount} evaluators.`, 'success', 'Import Complete');
+                    try {
+                        await API.bulkSaveEvaluators(batch);
+                        await API.loadData();
+                        UI.hideLoading();
+                        this.evaluators(document.getElementById('adminView'));
+                        UI.alert(`Successfully imported ${batch.length} evaluators.`, 'success', 'Import Complete');
+                    } catch (err) {
+                        UI.hideLoading();
+                        UI.alert('Bulk save failed: ' + err.message, 'error');
+                    }
 
                 } catch (err) {
                     UI.hideLoading();
@@ -1119,6 +1124,7 @@ const Admin = {
         host.innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="btn" onclick="Admin.editPanel()">Create Panel</button></div><div class="card"><h3>Panels (${DB.panels.length})</h3><div class="table-wrapper"><table><thead><tr><th>Panel</th><th>Evaluators</th><th>Projects</th><th>Actions</th></tr></thead><tbody>${list || '<tr><td colspan="4" style="text-align:center">No Panels</td></tr>'}</tbody></table></div></div>`;
     },
     editPanel(id) {
+
         const pa = id ? DB.panels.find(x => x.id === id) : { id: U.uid('panel'), name: 'Panel ' + (DB.panels.length + 1), evaluatorIds: [], projectIds: [] };
 
         // Calculate already assigned items (excluding current panel if editing)
@@ -1184,6 +1190,7 @@ const Admin = {
 
     data(host) {
         const rows = DB.results.map(r => ({ ...r, panel: DB.panels.find(p => p.id === r.panelId)?.name, project: DB.projects.find(p => p.id === r.projectId)?.title, evaluator: DB.evaluators.find(e => e.id === r.evaluatorId)?.name }));
+
         host.innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="btn" onclick='U.download("results.json", DB.results)'>Download JSON</button></div><div class="card"><h3>Raw Results (${DB.results.length})</h3><div class="table-wrapper"><table><thead><tr><th>Project</th><th>Evaluator</th><th>Score</th><th>Finalized</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.project || '-'}</td><td>${r.evaluator || '-'}</td><td>${r.total}</td><td>${r.finalizedByEvaluator}</td></tr>`).join('')}</tbody></table></div></div>`;
     }
 };
