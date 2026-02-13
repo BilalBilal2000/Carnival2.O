@@ -1168,13 +1168,13 @@ const Admin = {
             return `<label class="chip" style="${style}"><input type="checkbox" data-eid value="${e.id}" style="width:auto;margin-right:6px" ${disabled} ${checked}> ${label}</label>`;
         }).join(' ');
 
-        const projOpts = DB.projects.map(p => {
+        const projOpts = DB.projects.map((p, i) => {
             const isAssigned = assignedPids.has(p.id);
             const style = isAssigned ? 'background: #1a1e2e; cursor: not-allowed; border: 1px dashed #444; color: #666;' : 'cursor:pointer';
             const disabled = isAssigned ? 'disabled' : '';
             const checked = pa.projectIds.includes(p.id) ? 'checked' : '';
             const label = isAssigned ? `${p.title} (Assigned)` : p.title;
-            return `<label class="chip" style="${style}"><input type="checkbox" data-pid value="${p.id}" style="width:auto;margin-right:6px" ${disabled} ${checked}> ${label}</label>`;
+            return `<label class="chip" style="${style}"><input type="checkbox" data-pid value="${p.id}" style="width:auto;margin-right:6px" ${disabled} ${checked}> <b>${i + 1}.</b> ${label}</label>`;
         }).join(' ');
 
         const dlg = U.el(`<div class="modal-wrap"><div class="modal"><h3>${id ? 'Edit' : 'Create'} Panel</h3><label>Name</label><input id="pa_name" value="${pa.name}"><label>Evaluators</label><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">${evalOpts || 'No evaluators'}</div><label>Projects</label><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">${projOpts || 'No projects'}</div><div class="toolbar" style="margin-top:12px"><button class="btn" id="saveBtn">Save</button><button class="btn secondary" id="cancelBtn">Cancel</button></div></div></div>`);
