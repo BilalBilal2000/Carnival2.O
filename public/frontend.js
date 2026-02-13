@@ -881,6 +881,18 @@ const Admin = {
                         return '';
                     };
 
+                    // Calculate starting ID
+                    let maxId = 0;
+                    DB.projects.forEach(item => {
+                        if (item && item.id) {
+                            const match = item.id.match(/^PRJ(\d+)$/);
+                            if (match) {
+                                const num = parseInt(match[1]);
+                                if (num > maxId) maxId = num;
+                            }
+                        }
+                    });
+
                     // 1. Process rows and determine IDs (New vs Update)
                     const batch = [];
                     const seenTitlesInFile = new Set();
@@ -928,17 +940,6 @@ const Admin = {
                         UI.hideLoading();
                         this.projects(document.getElementById('adminView'));
                         UI.alert(`Successfully imported ${batch.length} projects.\n${newCount} Created, ${updateCount} Updated.`, 'success', 'Import Complete');
-                    } catch (err) {
-                        UI.hideLoading();
-                        UI.alert('Bulk save failed: ' + err.message, 'error');
-                    }
-
-                    try {
-                        await API.bulkSaveProjects(batch);
-                        await API.loadData();
-                        UI.hideLoading();
-                        this.projects(document.getElementById('adminView'));
-                        UI.alert(`Successfully imported ${batch.length} projects.`, 'success', 'Import Complete');
                     } catch (err) {
                         UI.hideLoading();
                         UI.alert('Bulk save failed: ' + err.message, 'error');
