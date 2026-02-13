@@ -844,8 +844,8 @@ const Admin = {
     },
 
     projects(host) {
-        const list = DB.projects.map(p => `<tr><td><b>${p.title}</b><div class="hint">${p.category}</div></td><td>${p.team}</td><td>${p.school}</td><td><div class="toolbar"><button class="btn" onclick="Admin.editProject('${p.id}')">Edit</button><button class="btn danger" onclick="Admin.deleteProject('${p.id}')">Del</button></div></td></tr>`).join('');
-        host.innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="btn" onclick="Admin.editProject()">Add Project</button><button class="btn secondary" onclick="Admin.uploadProjects()">Import Excel</button></div><div class="card"><h3>Projects (${DB.projects.length})</h3><div class="table-wrapper"><table><thead><tr><th>Title</th><th>SDG Goals</th><th>School</th><th>Actions</th></tr></thead><tbody>${list || '<tr><td colspan="4" style="text-align:center">No Projects</td></tr>'}</tbody></table></div></div>`;
+        const list = DB.projects.map((p, i) => `<tr><td>${i + 1}</td><td><b>${p.title}</b><div class="hint">${p.category}</div></td><td>${p.team}</td><td>${p.school}</td><td><div class="toolbar"><button class="btn" onclick="Admin.editProject('${p.id}')">Edit</button><button class="btn danger" onclick="Admin.deleteProject('${p.id}')">Del</button></div></td></tr>`).join('');
+        host.innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="btn" onclick="Admin.editProject()">Add Project</button><button class="btn secondary" onclick="Admin.uploadProjects()">Import Excel</button></div><div class="card"><h3>Projects (${DB.projects.length})</h3><div class="table-wrapper"><table><thead><tr><th>Sr No</th><th>Title</th><th>Project Name</th><th>School</th><th>Actions</th></tr></thead><tbody>${list || '<tr><td colspan="5" style="text-align:center">No Projects</td></tr>'}</tbody></table></div></div>`;
     },
     uploadProjects() {
         // Create hidden file input
@@ -872,56 +872,66 @@ const Admin = {
                     // Helper to fuzzy match keys or stick to exact
                     const mapKey = (row, keyCandidates) => {
                         const keys = Object.keys(row);
-                        const match = keys.find(k => keyCandidates.some(c => k.toLowerCase().includes(c.toLowerCase())));
-                        return match ? row[match] : '';
+                        // console.log('Row Keys:', keys); // Debugging
+                        // Iterate candidate keys first to respect priority order
+                        for (const candidate of keyCandidates) {
+                            const match = keys.find(k => k.trim().toLowerCase() === candidate.trim().toLowerCase() || k.toLowerCase().includes(candidate.toLowerCase()));
+                            if (match) return row[match];
+                        }
+                        return '';
                     };
 
-                    // 1. Pre-scan for duplicates
-                    const duplicates = [];
+                    // 1. Process rows and determine IDs (New vs Update)
+                    const batch = [];
                     const seenTitlesInFile = new Set();
-                    const validRows = [];
+                    let newCount = 0;
+                    let updateCount = 0;
 
                     for (let i = 0; i < json.length; i++) {
                         const row = json[i];
+                        if (i === 0) console.log('First Row Data:', row);
+
                         const title = mapKey(row, ['Title', 'Project Name', 'Project']);
-                        if (!title) continue; // Skip empty titles
+                        if (!title) continue;
 
                         const lowerTitle = String(title).trim().toLowerCase();
-
-                        // Check within file
-                        if (seenTitlesInFile.has(lowerTitle)) {
-                            duplicates.push(`Row ${i + 2}: "${title}" (Duplicate in file)`);
-                            continue;
-                        }
+                        if (seenTitlesInFile.has(lowerTitle)) continue; // Skip duplicates within file
                         seenTitlesInFile.add(lowerTitle);
 
-                        // Check in DB
-                        const exists = DB.projects.find(p => p.title.toLowerCase() === lowerTitle);
-                        if (exists) {
-                            duplicates.push(`Row ${i + 2}: "${title}" (Already exists in system)`);
-                            continue;
-                        }
+                        // Check if exists in DB to get ID
+                        const existing = DB.projects.find(p => p.title.toLowerCase() === lowerTitle);
+                        const id = existing ? existing.id : 'PRJ' + (maxId + newCount + 1);
+                        if (!existing) newCount++;
+                        else updateCount++;
 
-                        validRows.push({ row, title });
-                    }
-
-                    if (duplicates.length > 0) {
-                        return UI.alert('Duplicate projects found. Please remove them and try again:\n\n' + duplicates.join('\n'), 'error', 'Import Blocked');
-                    }
-
-                    UI.showLoading(`Importing ${validRows.length} projects...`);
-                    const batch = validRows.map(({ row, title }) => {
                         const category = mapKey(row, ['Theme', 'Category']);
-                        const team = mapKey(row, ['SDG', 'Goal', 'Team']);
+                        // Prioritize the duplicate header logic (_1) for the actual name
+                        const team = mapKey(row, ['Project Name_1', 'Project Title', 'Topic', 'SDG', 'Goal', 'Team', 'Project Name']);
                         const school = mapKey(row, ['School', 'College', 'Institution']);
-                        return {
-                            id: U.uid('project'),
+
+                        batch.push({
+                            id: id,
                             title: title,
                             category: category || 'General',
                             team: team || '',
                             school: school || ''
-                        };
-                    });
+                        });
+                    }
+
+                    if (batch.length === 0) return UI.alert('No valid projects found.', 'error');
+
+                    UI.showLoading(`Importing ${batch.length} projects (${newCount} new, ${updateCount} updates)...`);
+
+                    try {
+                        await API.bulkSaveProjects(batch);
+                        await API.loadData();
+                        UI.hideLoading();
+                        this.projects(document.getElementById('adminView'));
+                        UI.alert(`Successfully imported ${batch.length} projects.\n${newCount} Created, ${updateCount} Updated.`, 'success', 'Import Complete');
+                    } catch (err) {
+                        UI.hideLoading();
+                        UI.alert('Bulk save failed: ' + err.message, 'error');
+                    }
 
                     try {
                         await API.bulkSaveProjects(batch);
@@ -946,7 +956,7 @@ const Admin = {
     },
     editProject(id) {
         const p = id ? DB.projects.find(x => x.id === id) : { id: U.uid('project'), title: '', category: '', team: '', school: '' };
-        const dlg = U.el(`<div class="modal-wrap"><div class="modal"><h3>${id ? 'Edit' : 'Add'} Project</h3><label>Title</label><input id="p_title" value="${p.title}"><label>Theme</label><input id="p_cat" value="${p.category}"><label>SDG Goals</label><input id="p_team" value="${p.team}"><label>School</label><input id="p_school" value="${p.school}"><div class="toolbar" style="margin-top:12px"><button class="btn" id="saveBtn">Save</button><button class="btn secondary" id="cancelBtn">Cancel</button></div></div></div>`);
+        const dlg = U.el(`<div class="modal-wrap"><div class="modal"><h3>${id ? 'Edit' : 'Add'} Project</h3><label>Title</label><input id="p_title" value="${p.title}"><label>Theme</label><input id="p_cat" value="${p.category}"><label>Project Name</label><input id="p_team" value="${p.team}"><label>School</label><input id="p_school" value="${p.school}"><div class="toolbar" style="margin-top:12px"><button class="btn" id="saveBtn">Save</button><button class="btn secondary" id="cancelBtn">Cancel</button></div></div></div>`);
         document.body.appendChild(dlg);
         dlg.querySelector('#cancelBtn').onclick = () => dlg.remove();
         dlg.querySelector('#saveBtn').onclick = async () => {
@@ -1043,13 +1053,29 @@ const Admin = {
                         return UI.alert('Duplicate evaluators found. Please remove them and try again:\n\n' + duplicates.join('\n'), 'error', 'Import Blocked');
                     }
 
+                    // Calculate starting ID
+                    let maxId = 0;
+                    DB.evaluators.forEach(item => {
+                        if (item && item.id) {
+                            const match = item.id.match(/^EVAL(\d+)$/);
+                            if (match) {
+                                const num = parseInt(match[1]);
+                                if (num > maxId) maxId = num;
+                            }
+                        }
+                    });
+
                     UI.showLoading(`Importing ${validRows.length} evaluators...`);
-                    const batch = validRows.map(({ row, email }) => {
+                    const batch = validRows.map(({ row, email }, index) => {
                         const name = mapKey(row, ['Name', 'Evaluator Name', 'Full Name']);
                         const expertise = mapKey(row, ['Expertise', 'Domain', 'Subject']);
                         const code = mapKey(row, ['Code', 'Access Code', 'Passcode']);
+
+                        // Increment ID for each item in the batch
+                        const newId = 'EVAL' + (maxId + index + 1);
+
                         return {
-                            id: U.uid('evaluator'),
+                            id: newId,
                             name: name || '',
                             email: email,
                             expertise: expertise || '',
