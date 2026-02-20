@@ -458,7 +458,7 @@ const Admin = {
             const badge = isTop5 ? `<span class="pill" style="background:#7c9cff;color:#000;font-weight:700">TOP ${index + 1}</span>` : '';
 
             return `<tr style="${rowStyle}">
-                      <td>${badge}${badge ? '<br>' : ''}<b>${ps.title}</b><div class="hint" style="margin-top:4px">${ps.team}</div></td>
+                      <td>${badge}${badge ? '<br>' : ''}<b>${ps.team}</b><div class="hint" style="margin-top:4px">${ps.title}</div></td>
                       <td>${ps.category}<div class="hint">${ps.school}</div></td>
                       <td style="text-align:center"><span class="pill">${ps.evaluatorCount} evaluator${ps.evaluatorCount !== 1 ? 's' : ''}</span></td>
                       <td style="text-align:right"><b style="font-size:18px;color:${isTop5 ? 'var(--acc)' : 'inherit'}">${ps.averageScore.toFixed(2)}</b><div class="hint">out of ${ps.maxPossible}</div></td>
@@ -486,7 +486,7 @@ const Admin = {
                     </div>`;
         }).join('');
 
-        const dlg = U.el(`<div class="modal-wrap"><div class="modal"><h3>${project.title}</h3><div style="margin-bottom:16px" class="hint">${project.category} | ${project.team}</div>${evaluatorRows || '<p>No evaluations yet.</p>'}<div class="toolbar" style="margin-top:16px"><button class="btn secondary" id="closeDetails">Close</button></div></div></div>`);
+        const dlg = U.el(`<div class="modal-wrap"><div class="modal"><h3>${project.team}</h3><div style="margin-bottom:16px" class="hint">${project.category} | ${project.title}</div>${evaluatorRows || '<p>No evaluations yet.</p>'}<div class="toolbar" style="margin-top:16px"><button class="btn secondary" id="closeDetails">Close</button></div></div></div>`);
         document.body.appendChild(dlg);
         dlg.querySelector('#closeDetails').onclick = () => dlg.remove();
     },
@@ -504,7 +504,7 @@ const Admin = {
 
         // 3. Build Headers
         // Basic Info
-        const headers = ['Project ID', 'Title', 'SDG Goals', 'School', 'Theme', 'Avg Score'];
+        const headers = ['Project ID', 'Project Name', 'Title (Code)', 'School', 'Theme', 'Avg Score'];
         // Dynamic Evaluator Columns
         for (let i = 1; i <= maxEvals; i++) {
             headers.push(`Eval ${i} Name`);
@@ -521,8 +521,8 @@ const Admin = {
 
             const row = [
                 p.id,
-                p.title,
                 p.team,
+                p.title,
                 p.school,
                 p.category,
                 avg
@@ -844,8 +844,8 @@ const Admin = {
     },
 
     projects(host) {
-        const list = DB.projects.map((p, i) => `<tr><td>${i + 1}</td><td><b>${p.title}</b><div class="hint">${p.category}</div></td><td>${p.team}</td><td>${p.school}</td><td><div class="toolbar"><button class="btn" onclick="Admin.editProject('${p.id}')">Edit</button><button class="btn danger" onclick="Admin.deleteProject('${p.id}')">Del</button></div></td></tr>`).join('');
-        host.innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="btn" onclick="Admin.editProject()">Add Project</button><button class="btn secondary" onclick="Admin.uploadProjects()">Import Excel</button></div><div class="card"><h3>Projects (${DB.projects.length})</h3><div class="table-wrapper"><table><thead><tr><th>Sr No</th><th>Title</th><th>Project Name</th><th>School</th><th>Actions</th></tr></thead><tbody>${list || '<tr><td colspan="5" style="text-align:center">No Projects</td></tr>'}</tbody></table></div></div>`;
+        const list = DB.projects.map((p, i) => `<tr><td>${i + 1}</td><td><b>${p.team}</b><div class="hint">${p.category}</div></td><td>${p.title}</td><td>${p.school}</td><td><div class="toolbar"><button class="btn" onclick="Admin.editProject('${p.id}')">Edit</button><button class="btn danger" onclick="Admin.deleteProject('${p.id}')">Del</button></div></td></tr>`).join('');
+        host.innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="btn" onclick="Admin.editProject()">Add Project</button><button class="btn secondary" onclick="Admin.uploadProjects()">Import Excel</button></div><div class="card"><h3>Projects (${DB.projects.length})</h3><div class="table-wrapper"><table><thead><tr><th>Sr No</th><th>Project Name</th><th>Title (Code)</th><th>School</th><th>Actions</th></tr></thead><tbody>${list || '<tr><td colspan="5" style="text-align:center">No Projects</td></tr>'}</tbody></table></div></div>`;
     },
     uploadProjects() {
         // Create hidden file input
@@ -1173,7 +1173,7 @@ const Admin = {
             const style = isAssigned ? 'background: #1a1e2e; cursor: not-allowed; border: 1px dashed #444; color: #666;' : 'cursor:pointer';
             const disabled = isAssigned ? 'disabled' : '';
             const checked = pa.projectIds.includes(p.id) ? 'checked' : '';
-            const label = isAssigned ? `${p.title} (Assigned)` : p.title;
+            const label = isAssigned ? `${p.team} (Assigned)` : p.team;
             return `<label class="chip" style="${style}"><input type="checkbox" data-pid value="${p.id}" style="width:auto;margin-right:6px" ${disabled} ${checked}> <b>${i + 1}.</b> ${label}</label>`;
         }).join(' ');
 
@@ -1216,7 +1216,7 @@ const Admin = {
     },
 
     data(host) {
-        const rows = DB.results.map(r => ({ ...r, panel: DB.panels.find(p => p.id === r.panelId)?.name, project: DB.projects.find(p => p.id === r.projectId)?.title, evaluator: DB.evaluators.find(e => e.id === r.evaluatorId)?.name }));
+        const rows = DB.results.map(r => ({ ...r, panel: DB.panels.find(p => p.id === r.panelId)?.name, project: DB.projects.find(p => p.id === r.projectId)?.team, evaluator: DB.evaluators.find(e => e.id === r.evaluatorId)?.name }));
 
         host.innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="btn" onclick='U.download("results.json", DB.results)'>Download JSON</button></div><div class="card"><h3>Raw Results (${DB.results.length})</h3><div class="table-wrapper"><table><thead><tr><th>Project</th><th>Evaluator</th><th>Score</th><th>Finalized</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.project || '-'}</td><td>${r.evaluator || '-'}</td><td>${r.total}</td><td>${r.finalizedByEvaluator}</td></tr>`).join('')}</tbody></table></div></div>`;
     }
@@ -1257,7 +1257,7 @@ const Eval = {
         const finalizedAll = DB.evaluatorState[Auth.currentEval.id]?.finalizedAll;
 
         const rows = myProjectIds.map(pid => {
-            const p = DB.projects.find(x => x.id === pid) || { title: 'Unknown' };
+            const p = DB.projects.find(x => x.id === pid) || { title: 'Unknown', team: 'Unknown' };
             const submitted = DB.results.find(r => r.projectId === pid && r.evaluatorId === Auth.currentEval.id);
 
             if (submitted) {
@@ -1265,9 +1265,9 @@ const Eval = {
                     <button class="btn secondary" onclick="Eval.openViewModal('${submitted.id}')">View</button>
                     ${!finalizedAll ? `<button class="btn" style="margin-left:6px" onclick="Eval.openEvaluateModal('${pid}')">Edit</button>` : ''}
                 `;
-                return `<tr><td><b>${p.title}</b><div class="hint">${p.category || ''}</div></td><td><span class="pill success">Evaluated</span></td><td><div class="toolbar">${actions}</div></td></tr>`;
+                return `<tr><td><b>${p.team}</b><div class="hint">${p.category || ''}</div></td><td><span class="pill success">Evaluated</span></td><td><div class="toolbar">${actions}</div></td></tr>`;
             } else {
-                return `<tr><td><b>${p.title}</b><div class="hint">${p.category || ''}</div></td><td><span class="pill">Pending</span></td><td><button class="btn" ${finalizedAll ? 'disabled' : ''} onclick="Eval.openEvaluateModal('${pid}')">Evaluate</button></td></tr>`;
+                return `<tr><td><b>${p.team}</b><div class="hint">${p.category || ''}</div></td><td><span class="pill">Pending</span></td><td><button class="btn" ${finalizedAll ? 'disabled' : ''} onclick="Eval.openEvaluateModal('${pid}')">Evaluate</button></td></tr>`;
             }
         }).join('');
 
@@ -1302,7 +1302,7 @@ const Eval = {
                 <input type="number" min="0" max="${d.maxPoints || 10}" data-key="${d.key}" value="${prior?.scores?.[d.key] || ''}" placeholder="Score">
             </div>`).join('');
 
-        const dlg = U.el(`<div class="modal-wrap"><div class="modal"><h3>Evaluate: ${project.title}</h3>${fields}<label>Remark</label><textarea id="e_remark">${prior?.remark || ''}</textarea><div class="toolbar" style="margin-top:16px"><button class="btn" id="subBtn">Submit</button><button class="btn secondary" id="cancelBtn">Cancel</button></div></div></div>`);
+        const dlg = U.el(`<div class="modal-wrap"><div class="modal"><h3>Evaluate: ${project.team}</h3>${fields}<label>Remark</label><textarea id="e_remark">${prior?.remark || ''}</textarea><div class="toolbar" style="margin-top:16px"><button class="btn" id="subBtn">Submit</button><button class="btn secondary" id="cancelBtn">Cancel</button></div></div></div>`);
         document.body.appendChild(dlg);
 
         dlg.querySelector('#cancelBtn').onclick = () => dlg.remove();
@@ -1347,7 +1347,7 @@ const Eval = {
         const proj = DB.projects.find(p => p.id === res.projectId);
         const fields = DB.rubricDefs.map(d => `<div style="margin-bottom:6px"><span class="hint">${d.label}:</span> <b>${res.scores?.[d.key]}</b></div>`).join('');
 
-        const dlg = U.el(`<div class="modal-wrap"><div class="modal"><h3>${proj.title}</h3>${fields}<p style="margin-top:12px"><b>Total: ${res.total}</b></p><p>Remark: ${res.remark || 'None'}</p><button class="btn secondary" style="margin-top:16px" onclick="this.closest('.modal-wrap').remove()">Close</button></div></div>`);
+        const dlg = U.el(`<div class="modal-wrap"><div class="modal"><h3>${proj.team}</h3>${fields}<p style="margin-top:12px"><b>Total: ${res.total}</b></p><p>Remark: ${res.remark || 'None'}</p><button class="btn secondary" style="margin-top:16px" onclick="this.closest('.modal-wrap').remove()">Close</button></div></div>`);
         document.body.appendChild(dlg);
     },
 
