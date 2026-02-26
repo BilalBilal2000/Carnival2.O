@@ -32,7 +32,8 @@ const ProjectSchema = new mongoose.Schema({
     category: { type: String, trim: true },
     team: { type: String, trim: true },
     school: { type: String, trim: true },
-    contact: { type: String, trim: true }
+    contact: { type: String, trim: true },
+    sequence: { type: Number, default: 0 }
 }, { timestamps: true });
 
 const EvaluatorSchema = new mongoose.Schema({

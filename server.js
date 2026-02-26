@@ -102,8 +102,8 @@ app.get('/api/data', async (req, res) => {
     try {
         const [settings, evaluators, projects, panels, results, evalStates] = await Promise.all([
             Setting.findOne(),
-            Evaluator.find(),
-            Project.find(),
+            Evaluator.find().sort({ name: 1 }),
+            Project.find().sort({ sequence: 1, id: 1 }),
             Panel.find(),
             Result.find(),
             EvaluatorState.find()

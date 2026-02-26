@@ -630,3 +630,15 @@ th {
     max-width: 450px;
     margin: 40px auto;
 }
+/* Invalid Input Highlighting */
+.invalid-input {
+    border-color: var(--bad) !important;
+    background: rgba(248, 113, 113, 0.05) !important;
+}
+
+.invalid-msg {
+    color: var(--bad);
+    font-size: 12px;
+    margin-top: 4px;
+    font-weight: 500;
+}

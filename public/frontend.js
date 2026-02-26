@@ -62,8 +62,8 @@ const API = {
         if (DB.settings.rubric && DB.settings.rubric.length > 0) {
             DB.rubricDefs = DB.settings.rubric;
         }
-        DB.evaluators = data.evaluators || [];
-        DB.projects = data.projects || [];
+        DB.evaluators = (data.evaluators || []).sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
+        DB.projects = (data.projects || []).sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
         DB.panels = data.panels || [];
         DB.results = data.results || [];
         DB.evaluatorState = data.evaluatorState || {};
@@ -440,12 +440,12 @@ const Admin = {
     scores(host) {
         const projectScores = DB.projects.map(project => {
             const projectResults = DB.results.filter(r => r.projectId === project.id);
+            const maxPossible = DB.rubricDefs.length * 10;
             if (projectResults.length === 0) {
-                return { id: project.id, title: project.title, category: project.category || '—', team: project.team || '—', school: project.school || '—', evaluatorCount: 0, totalScore: 0, averageScore: 0, maxPossible: DB.rubricDefs.length * 10, percentage: 0 };
+                return { id: project.id, title: project.title, category: project.category || '—', team: project.team || '—', school: project.school || '—', evaluatorCount: 0, totalScore: 0, averageScore: 0, maxPossible, percentage: 0 };
             }
             const totalScore = projectResults.reduce((sum, r) => sum + (r.total || 0), 0);
             const averageScore = totalScore / projectResults.length;
-            const maxPossible = DB.rubricDefs.length * 10;
             const percentage = (averageScore / maxPossible) * 100;
             return { id: project.id, title: project.title, category: project.category || '—', team: project.team || '—', school: project.school || '—', evaluatorCount: projectResults.length, totalScore, averageScore, maxPossible, percentage };
         });
@@ -454,20 +454,59 @@ const Admin = {
 
         const rows = projectScores.map((ps, index) => {
             const isTop5 = index < 5 && ps.evaluatorCount > 0;
-            const rowStyle = isTop5 ? 'background: linear-gradient(90deg, #1a2454, #0f1534); border-left: 4px solid #7c9cff;' : '';
-            const badge = isTop5 ? `<span class="pill" style="background:#7c9cff;color:#000;font-weight:700">TOP ${index + 1}</span>` : '';
+            const rowStyle = isTop5 ? 'background: rgba(124, 156, 255, 0.05); border-left: 4px solid var(--acc);' : '';
+            const badge = isTop5 ? `<div style="margin-bottom:8px"><span class="pill" style="background:#1e2842; color:var(--acc); border: 1px solid var(--acc); font-weight:800; text-transform:uppercase; font-size:10px; padding:2px 8px; border-radius:4px;">TOP ${index + 1}</span></div>` : '';
+
+            const percColor = ps.percentage >= 80 ? 'var(--good)' : ps.percentage >= 60 ? '#fbbf24' : 'inherit';
 
             return `<tr style="${rowStyle}">
-                      <td>${badge}${badge ? '<br>' : ''}<b>${ps.team}</b><div class="hint" style="margin-top:4px">${ps.title}</div></td>
-                      <td>${ps.category}<div class="hint">${ps.school}</div></td>
-                      <td style="text-align:center"><span class="pill">${ps.evaluatorCount} evaluator${ps.evaluatorCount !== 1 ? 's' : ''}</span></td>
-                      <td style="text-align:right"><b style="font-size:18px;color:${isTop5 ? 'var(--acc)' : 'inherit'}">${ps.averageScore.toFixed(2)}</b><div class="hint">out of ${ps.maxPossible}</div></td>
-                      <td style="text-align:right"><b style="font-size:16px;color:${ps.percentage >= 80 ? 'var(--good)' : ps.percentage >= 60 ? '#fbbf24' : 'inherit'}">${ps.percentage.toFixed(1)}%</b></td>
-                      <td style="text-align:center"><button class="btn" onclick="Admin.viewProjectDetails('${ps.id}')">Details</button></td>
+                       <td style="padding: 16px 12px; width: 35%;">
+                          ${badge}
+                          <div style="font-size: 15px; font-weight: 700; color: var(--text); line-height: 1.3;">${ps.team}</div>
+                          <div class="hint" style="font-size: 11px; margin-top: 4px; opacity: 0.6;">${ps.title}</div>
+                       </td>
+                       <td style="width: 25%;">
+                          <div style="font-size: 14px; color: var(--text);">${ps.category}</div>
+                          <div class="hint" style="font-size: 11px; margin-top: 2px; opacity: 0.6;">${ps.school}</div>
+                       </td>
+                       <td style="text-align:center; width: 15%;">
+                          <span class="pill" style="background: rgba(30, 40, 66, 0.6); border-radius: 20px; padding: 5px 14px; border: 1px solid var(--border); font-size: 12px;">${ps.evaluatorCount} evaluators</span>
+                       </td>
+                       <td style="text-align:right; width: 12%;">
+                          <div style="font-size: 18px; font-weight: 800; color: var(--acc);">${ps.averageScore.toFixed(2)}</div>
+                          <div class="hint" style="font-size: 11px; margin-top: -2px;">out of ${ps.maxPossible}</div>
+                       </td>
+                       <td style="text-align:right; width: 8%;">
+                          <b style="font-size: 15px; color: ${percColor};">${ps.percentage.toFixed(1)}%</b>
+                       </td>
+                       <td style="text-align:right; width: 5%;">
+                          <button class="btn" style="background: var(--acc); color: #000; border-radius: 6px; padding: 6px 16px; font-size: 13px;" onclick="Admin.viewProjectDetails('${ps.id}')">Details</button>
+                       </td>
                     </tr>`;
         }).join('');
 
-        host.innerHTML = `<div class="card"><div class="flex-between" style="margin-bottom:12px"><h3>Scores</h3><button class="btn" onclick="Admin.exportScores()">Export CSV</button></div><div class="table-wrapper"><table><thead><tr><th>Project</th><th>Theme</th><th style="text-align:center">Evaluations</th><th style="text-align:right">Avg Score</th><th style="text-align:right">%</th><th style="text-align:center">Action</th></tr></thead><tbody>${rows || '<tr><td colspan="6" style="text-align:center">No data</td></tr>'}</tbody></table></div></div>`;
+        host.innerHTML = `
+            <div class="card" style="padding: 0; overflow: hidden;">
+                <div class="flex-between" style="padding: 20px; border-bottom: 1px solid var(--border);">
+                    <h3>Scores</h3>
+                    <button class="btn secondary" onclick="Admin.exportScores()">Export CSV</button>
+                </div>
+                <div class="table-wrapper">
+                    <table style="margin-top: 0;">
+                        <thead style="background: rgba(18, 24, 43, 0.5);">
+                            <tr>
+                                <th style="padding: 12px;">Project</th>
+                                <th>Theme</th>
+                                <th style="text-align:center">Evaluations</th>
+                                <th style="text-align:right">Avg Score</th>
+                                <th style="text-align:right">%</th>
+                                <th style="text-align:right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows || '<tr><td colspan="6" style="text-align:center; padding: 40px;">No evaluations recorded yet.</td></tr>'}</tbody>
+                    </table>
+                </div>
+            </div>`;
     },
 
     viewProjectDetails(projectId) {
@@ -844,8 +883,8 @@ const Admin = {
     },
 
     projects(host) {
-        const list = DB.projects.map((p, i) => `<tr><td>${i + 1}</td><td><b>${p.team}</b><div class="hint">${p.category}</div></td><td>${p.title}</td><td>${p.school}</td><td><div class="toolbar"><button class="btn" onclick="Admin.editProject('${p.id}')">Edit</button><button class="btn danger" onclick="Admin.deleteProject('${p.id}')">Del</button></div></td></tr>`).join('');
-        host.innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="btn" onclick="Admin.editProject()">Add Project</button><button class="btn secondary" onclick="Admin.uploadProjects()">Import Excel</button></div><div class="card"><h3>Projects (${DB.projects.length})</h3><div class="table-wrapper"><table><thead><tr><th>Sr No</th><th>Project Name</th><th>Title (Code)</th><th>School</th><th>Actions</th></tr></thead><tbody>${list || '<tr><td colspan="5" style="text-align:center">No Projects</td></tr>'}</tbody></table></div></div>`;
+        const list = DB.projects.map((p, i) => `<tr><td>${i + 1}</td><td>${p.title}</td><td>${p.category}</td><td><b>${p.team}</b></td><td>${p.school}</td><td><div class="toolbar"><button class="btn" onclick="Admin.editProject('${p.id}')">Edit</button><button class="btn danger" onclick="Admin.deleteProject('${p.id}')">Del</button></div></td></tr>`).join('');
+        host.innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="btn" onclick="Admin.editProject()">Add Project</button><button class="btn secondary" onclick="Admin.uploadProjects()">Import Excel</button></div><div class="card"><h3>Projects (${DB.projects.length})</h3><div class="table-wrapper"><table><thead><tr><th>Sr No</th><th>Code</th><th>Theme</th><th>Project Name</th><th>School</th><th>Actions</th></tr></thead><tbody>${list || '<tr><td colspan="6" style="text-align:center">No Projects</td></tr>'}</tbody></table></div></div>`;
     },
     uploadProjects() {
         // Create hidden file input
@@ -918,7 +957,7 @@ const Admin = {
 
                         const category = mapKey(row, ['Theme', 'Category']);
                         // Prioritize the duplicate header logic (_1) for the actual name
-                        const team = mapKey(row, ['Project Name_1', 'Project Title', 'Topic', 'SDG', 'Goal', 'Team', 'Project Name']);
+                        const team = mapKey(row, ['Project Name_1', 'Project Title', 'Topic', 'SDG', 'Goal', 'Team']);
                         const school = mapKey(row, ['School', 'College', 'Institution']);
 
                         batch.push({
@@ -926,7 +965,8 @@ const Admin = {
                             title: title,
                             category: category || 'General',
                             team: team || '',
-                            school: school || ''
+                            school: school || '',
+                            sequence: i + 1 // Preserve row sequence from file
                         });
                     }
 
@@ -956,11 +996,21 @@ const Admin = {
         input.click();
     },
     editProject(id) {
-        const p = id ? DB.projects.find(x => x.id === id) : { id: U.uid('project'), title: '', category: '', team: '', school: '' };
+        const p = id ? DB.projects.find(x => x.id === id) : {
+            id: U.uid('project'),
+            title: '',
+            category: '',
+            team: '',
+            school: '',
+            sequence: DB.projects.length > 0 ? Math.max(...DB.projects.map(pj => pj.sequence || 0)) + 1 : 1
+        };
         const dlg = U.el(`<div class="modal-wrap"><div class="modal"><h3>${id ? 'Edit' : 'Add'} Project</h3><label>Title</label><input id="p_title" value="${p.title}"><label>Theme</label><input id="p_cat" value="${p.category}"><label>Project Name</label><input id="p_team" value="${p.team}"><label>School</label><input id="p_school" value="${p.school}"><div class="toolbar" style="margin-top:12px"><button class="btn" id="saveBtn">Save</button><button class="btn secondary" id="cancelBtn">Cancel</button></div></div></div>`);
         document.body.appendChild(dlg);
         dlg.querySelector('#cancelBtn').onclick = () => dlg.remove();
         dlg.querySelector('#saveBtn').onclick = async () => {
+            p.title = dlg.querySelector('#p_title').value;
+            p.category = dlg.querySelector('#p_cat').value;
+            p.team = dlg.querySelector('#p_team').value;
             p.school = dlg.querySelector('#p_school').value;
             if (!p.title) return UI.alert('Title required', 'error', 'Error');
 
@@ -1305,6 +1355,34 @@ const Eval = {
         const dlg = U.el(`<div class="modal-wrap"><div class="modal"><h3>Evaluate: ${project.team}</h3>${fields}<label>Remark</label><textarea id="e_remark">${prior?.remark || ''}</textarea><div class="toolbar" style="margin-top:16px"><button class="btn" id="subBtn">Submit</button><button class="btn secondary" id="cancelBtn">Cancel</button></div></div></div>`);
         document.body.appendChild(dlg);
 
+        // Add real-time validation
+        dlg.querySelectorAll('input[data-key]').forEach(input => {
+            const key = input.getAttribute('data-key');
+            const def = DB.rubricDefs.find(d => d.key === key);
+            const max = def ? (def.maxPoints || 10) : 10;
+
+            const validate = () => {
+                const val = parseFloat(input.value);
+                const isInvalid = !isNaN(val) && (val < 0 || val > max);
+
+                // Remove existing msg if any
+                const existingMsg = input.parentNode.querySelector('.invalid-msg');
+                if (existingMsg) existingMsg.remove();
+
+                if (isInvalid) {
+                    input.classList.add('invalid-input');
+                    const msg = document.createElement('div');
+                    msg.className = 'invalid-msg';
+                    msg.textContent = `Invalid Score (Max: ${max})`;
+                    input.parentNode.appendChild(msg);
+                } else {
+                    input.classList.remove('invalid-input');
+                }
+            };
+
+            input.addEventListener('input', validate);
+        });
+
         dlg.querySelector('#cancelBtn').onclick = () => dlg.remove();
         dlg.querySelector('#subBtn').onclick = async () => {
             const scores = {};
@@ -1352,6 +1430,14 @@ const Eval = {
     },
 
     async doFinalize() {
+        const myPanels = DB.panels.filter(p => p.evaluatorIds.includes(Auth.currentEval.id));
+        const myProjectIds = [...new Set(myPanels.flatMap(p => p.projectIds))];
+        const left = myProjectIds.length - DB.results.filter(r => r.evaluatorId === Auth.currentEval.id).length;
+
+        if (left > 0) {
+            return UI.alert(`You have ${left} pending project(s). Please evaluate all projects before finalizing your submission.`, 'error', 'Action Required');
+        }
+
         if (!await UI.confirm('Are you sure you want to finalize ALL evaluations? You will NOT be able to edit your scores after this.', 'Finalize All?')) return;
         UI.showLoading('Finalizing...');
         await API.finalizeEvaluator(Auth.currentEval.id);
