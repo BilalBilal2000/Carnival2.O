@@ -1305,6 +1305,12 @@ const Eval = {
         const myPanels = DB.panels.filter(p => p.evaluatorIds.includes(Auth.currentEval.id));
         const myProjectIds = [...new Set(myPanels.flatMap(p => p.projectIds))];
         const finalizedAll = DB.evaluatorState[Auth.currentEval.id]?.finalizedAll;
+        const completedResults = DB.results.filter(r => r.evaluatorId === Auth.currentEval.id && myProjectIds.includes(r.projectId));
+        const completedCount = completedResults.length;
+        const totalCount = myProjectIds.length;
+        const left = totalCount - completedCount;
+
+        const isEffectivelyFinalized = finalizedAll && left === 0;
 
         const rows = myProjectIds.map(pid => {
             const p = DB.projects.find(x => x.id === pid) || { title: 'Unknown', team: 'Unknown' };
@@ -1313,17 +1319,17 @@ const Eval = {
             if (submitted) {
                 const actions = `
                     <button class="btn secondary" onclick="Eval.openViewModal('${submitted.id}')">View</button>
-                    ${!finalizedAll ? `<button class="btn" style="margin-left:6px" onclick="Eval.openEvaluateModal('${pid}')">Edit</button>` : ''}
+                    ${!isEffectivelyFinalized ? `<button class="btn" style="margin-left:6px" onclick="Eval.openEvaluateModal('${pid}')">Edit</button>` : ''}
                 `;
                 return `<tr><td><b>${p.team}</b><div class="hint">${p.category || ''}</div></td><td><span class="pill success">Evaluated</span></td><td><div class="toolbar">${actions}</div></td></tr>`;
             } else {
-                return `<tr><td><b>${p.team}</b><div class="hint">${p.category || ''}</div></td><td><span class="pill">Pending</span></td><td><button class="btn" ${finalizedAll ? 'disabled' : ''} onclick="Eval.openEvaluateModal('${pid}')">Evaluate</button></td></tr>`;
+                return `<tr><td><b>${p.team}</b><div class="hint">${p.category || ''}</div></td><td><span class="pill">Pending</span></td><td><button class="btn" ${isEffectivelyFinalized ? 'disabled' : ''} onclick="Eval.openEvaluateModal('${pid}')">Evaluate</button></td></tr>`;
             }
         }).join('');
 
-        const left = myProjectIds.length - DB.results.filter(r => r.evaluatorId === Auth.currentEval.id).length;
+        document.getElementById('progressCount').textContent = `${completedCount} / ${totalCount} completed`;
         document.getElementById('leftCount').textContent = `${left} remaining`;
-        document.getElementById('progressFill').style.width = ((myProjectIds.length - left) / myProjectIds.length * 100) + '%';
+        document.getElementById('progressFill').style.width = (totalCount > 0 ? (completedCount / totalCount * 100) : 0) + '%';
 
         // Add View Rubric Button
         const rubricBtn = `<button class="btn secondary" style="font-size:12px;padding:4px 8px;margin-bottom:8px" onclick="Eval.viewRubric()">View Evaluation Criteria</button>`;
@@ -1331,12 +1337,18 @@ const Eval = {
 
         const toolbar = document.getElementById('evalToolbar');
         toolbar.innerHTML = '';
-        if (!finalizedAll && left === 0 && myProjectIds.length > 0) {
-            const btn = U.el(`<button class="btn" style="width:100%">Finalize All Evaluations</button>`);
-            btn.onclick = () => this.doFinalize();
-            toolbar.appendChild(btn);
-        } else if (finalizedAll) {
-            toolbar.innerHTML = `<div class="pill success" style="width:100%;text-align:center;padding:12px">All Evaluations Finalized</div>`;
+
+        const isFullyDone = (totalCount > 0 && left === 0);
+        const finalizedAndDone = isFullyDone && finalizedAll;
+
+        if (isFullyDone) {
+            if (finalizedAll) {
+                toolbar.innerHTML = `<div class="pill success" style="width:100%;text-align:center;padding:12px">All Evaluations Finalized</div>`;
+            } else {
+                const btn = U.el(`<button class="btn" style="width:100%">Finalize All Evaluations</button>`);
+                btn.onclick = () => this.doFinalize();
+                toolbar.appendChild(btn);
+            }
         }
     },
 
@@ -1402,7 +1414,7 @@ const Eval = {
             if (!valid) return UI.alert('Please enter valid scores within the specified range for each criteria.', 'error', 'Invalid Input');
 
             const result = {
-                id: prior?.id || U.uid('result'),
+                id: prior?.id || `RES-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
                 projectId,
                 panelId: panel?.id,
                 evaluatorId: Auth.currentEval.id,
@@ -1410,6 +1422,10 @@ const Eval = {
                 total,
                 remark: dlg.querySelector('#e_remark').value
             };
+
+            if (/\d/.test(result.remark)) {
+                return UI.alert('Remarks should only contain text, no numbers allowed.', 'error', 'Invalid Input');
+            }
 
             UI.showLoading('Saving...');
             await API.saveResult(result);
