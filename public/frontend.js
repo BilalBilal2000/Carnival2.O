@@ -531,8 +531,9 @@ const Admin = {
     },
 
     exportScores() {
-        // 1. Determine rubric keys
+        // 1. Determine rubric keys & labels
         const keys = DB.rubricDefs.map(d => d.key);
+        const labels = DB.rubricDefs.map(d => d.label);
 
         // 2. Find max evaluators to set column headers
         let maxEvals = 0;
@@ -547,7 +548,7 @@ const Admin = {
         // Dynamic Evaluator Columns
         for (let i = 1; i <= maxEvals; i++) {
             headers.push(`Eval ${i} Name`);
-            keys.forEach(k => headers.push(`Eval ${i} ${k}`)); // e.g. Eval 1 problem
+            labels.forEach(label => headers.push(`Eval ${i} ${label}`)); // Use labels instead of keys
             headers.push(`Eval ${i} Total`);
             headers.push(`Eval ${i} Remark`);
         }
@@ -573,7 +574,7 @@ const Admin = {
                 if (r) {
                     const e = DB.evaluators.find(x => x.id === r.evaluatorId);
                     row.push(e ? (e.name || e.email) : 'Unknown'); // Name
-                    keys.forEach(k => row.push(r.scores?.[k] || 0)); // Scores
+                    keys.forEach(k => row.push(r.scores?.[k] || 0)); // Scores (still use keys for lookup)
                     row.push(r.total || 0); // Total
                     row.push((r.remark || '').replace(/\n/g, ' ')); // Remark
                 } else {
@@ -589,11 +590,11 @@ const Admin = {
 
         // 5. Convert to CSV
         const csvContent = [
-            headers.join(','),
+            headers.map(h => `"${('' + (h ?? '')).replace(/"/g, '""')}"`).join(','), // Quote headers too
             ...rows.map(row => row.map(v => `"${('' + (v ?? '')).replace(/"/g, '""')}"`).join(','))
         ].join('\n');
 
-        U.download('scores_detailed.csv', csvContent);
+        U.download('score.csv', csvContent);
     },
 
     // --- Detailed Scores Tab ---
@@ -609,7 +610,7 @@ const Admin = {
         });
 
         // 3. Build Header HTML
-        let headerHtml = '<th>Project</th><th>SDG Goals</th><th style="text-align:center">Avg</th>';
+        let headerHtml = '<th>Project</th><th>Project Name</th><th style="text-align:center">Avg</th>';
         for (let i = 1; i <= maxEvals; i++) {
             headerHtml += `<th style="border-left:2px solid var(--border);text-align:center" colspan="${keys.length + 1}">Evaluator ${i}</th>`;
         }
@@ -618,7 +619,7 @@ const Admin = {
         let subHeaderHtml = '<th></th><th></th><th></th>';
         for (let i = 1; i <= maxEvals; i++) {
             subHeaderHtml += `<th style="border-left:2px solid var(--border);font-size:11px">Name/Total</th>`;
-            keys.forEach(k => subHeaderHtml += `<th style="font-size:11px;writing-mode:vertical-rl;transform:rotate(180deg)">${k.substr(0, 10)}</th>`);
+            DB.rubricDefs.forEach(def => subHeaderHtml += `<th style="font-size:11px;writing-mode:vertical-rl;transform:rotate(180deg)">${def.label.substr(0, 15)}</th>`);
         }
 
         // 4. Build Rows
